@@ -30,6 +30,28 @@ class Server:
         self.sock.bind((const_cs.HOST, const_cs.PORT))
         self.sock.settimeout(3)  # time out in order not to block forever
         self._logger.info("Server bound to socket " + str(self.sock))
+        self.data_store =  {
+        "Anna Mueller": "+49 151 2345678",
+        "Ben Schneider": "+49 176 9876543",
+        "Clara Fischer": "+49 160 3456789",
+        "David Weber": "+49 157 5678901",
+        "Ella Hoffmann": "+49 152 6789012",
+        "Felix Wagner": "+49 171 7890123",
+        "Greta Becker": "+49 173 8901234",
+        "Hannes Schaefer": "+49 175 9012345",
+        "Isabel Koch": "+49 178 1234567",
+        "Jonas Bauer": "+49 179 2345678",
+        "Klara Richter": "+49 170 3456789",
+        "Leon Vogel": "+49 162 4567890",
+        "Marie Winkler": "+49 163 5678901",
+        "Nico Peters": "+49 174 6789012",
+        "Olivia Klein": "+49 155 7890123",
+        "Paul Neumann": "+49 177 8901234",
+        "Rosa Lehmann": "+49 159 9012345",
+        "Sophia Keller": "+49 172 1234567",
+        "Tim Braun": "+49 158 2345678",
+        "Viktor Schroeder": "+49 156 3456789"
+        }
 
     def serve(self):
         """ Serve echo """
