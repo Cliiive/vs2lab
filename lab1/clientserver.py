@@ -69,6 +69,18 @@ class Client:
         self.logger.info("Client down.")
         return msg_out
 
+    def get(self, name: str) -> str:
+        """ Get entry from server """
+        self.sock.send(f"GET {name}".encode('ascii'))
+        data = self.sock.recv(1024)
+        return data.decode('ascii')
+    
+    def get_all(self) -> str:
+        """ Get all entries from server """
+        self.sock.send("GETALL".encode('ascii'))
+        data = self.sock.recv(4096)
+        return data.decode('ascii')
+    
     def close(self):
         """ Close socket """
         self.sock.close()
