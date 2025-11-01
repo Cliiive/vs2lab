@@ -64,7 +64,13 @@ class Server:
                     data = connection.recv(1024)  # receive data from client
                     if not data:
                         break  # stop if client stopped
-                    connection.send(data + "*".encode('ascii'))  # return sent data plus an "*"
+                    # connection.send(data + "*".encode('ascii'))  # return sent data plus an "*"
+                    msg = data.decode('ascii')
+                    if msg.startswith("GETALL"):
+                        response = "\n".join(f"{name}:{number}" for name, number in self.data_store.items())
+                    elif msg.startswith("GET "):
+                        name = msg[4:]
+                        response = self.data_store.get(name, "NOTFOUND")
                 connection.close()  # close the connection
             except socket.timeout:
                 pass  # ignore timeouts
