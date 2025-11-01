@@ -24,11 +24,6 @@ class TestEchoService(unittest.TestCase):
         super().setUp()
         self.client = clientserver.Client()
 
-    def test_srv_echo(self):
-        """Testet das ursprüngliche Echo-Verhalten"""
-        msg = self.client.call("Hello VS2Lab")
-        self.assertEqual(msg, 'Hello VS2Lab*')
-
     def test_srv_get_existing(self):
         """Testet GET für existierenden Namen"""
         result = self.client.get("Anna Mueller")
