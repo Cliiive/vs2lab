@@ -61,16 +61,23 @@ class Server:
                 # pylint: disable=unused-variable
                 (connection, address) = self.sock.accept()  # returns new socket and address of client
                 while True:  # forever
+                    self._logger.info("Server waiting for data...")
                     data = connection.recv(1024)  # receive data from client
                     if not data:
                         break  # stop if client stopped
                     # connection.send(data + "*".encode('ascii'))  # return sent data plus an "*"
+                    self._logger.info("Server received data: " + str(data))
                     msg = data.decode('ascii')
                     if msg.startswith("GETALL"):
+                        self._logger.info("Server processing GETALL request")
                         response = "\n".join(f"{name}:{number}" for name, number in self.data_store.items())
+                        connection.send(response.encode('ascii'))
                     elif msg.startswith("GET "):
+                        self._logger.info("Server processing GET request")
                         name = msg[4:]
+                        self._logger.info(f"Server looking up name: {name}")
                         response = self.data_store.get(name, "NOTFOUND")
+                        connection.send(response.encode('ascii'))
                 connection.close()  # close the connection
             except socket.timeout:
                 pass  # ignore timeouts
@@ -99,14 +106,20 @@ class Client:
 
     def get(self, name: str) -> str:
         """ Get entry from server """
+        self.logger.info(f"Client sending GET request for name: {name}")
         self.sock.send(f"GET {name}".encode('ascii'))
+        self.logger.info(f"Client sent GET request for name: {name}")
         data = self.sock.recv(1024)
+        self.logger.info(f"Client received data: {data}")
         return data.decode('ascii')
     
     def get_all(self) -> str:
         """ Get all entries from server """
+        self.logger.info("Client sending GETALL request")
         self.sock.send("GETALL".encode('ascii'))
+        self.logger.info("Client sent GETALL request")
         data = self.sock.recv(4096)
+        self.logger.info(f"Client received data: {data}")
         return data.decode('ascii')
     
     def close(self):
