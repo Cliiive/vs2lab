@@ -13,7 +13,14 @@ lab_logging.setup(stream_level=logging.INFO)  # init loging channels for the lab
 # pylint: disable=logging-not-lazy, line-too-long
 
 class Server:
-    """ The server """
+
+    #  The server.
+
+    # Protocol (text-based):
+    #   - "GET name"    -> server returns number or "NOTFOUND"
+    #   - "GETALL"      -> server returns all entries as lines "name:number"
+    #   - anything else  -> echo (original behaviour) -> returns data + '*'
+
     _logger = logging.getLogger("vs2lab.lab1.clientserver.Server")
     _serving = True
 
