@@ -32,7 +32,7 @@ class Client():
         self.chan = lab_channel.Channel()
         self.client = self.chan.join('client')
         self.server = None
-        self.asyncAppend = False
+        self.asyncAppend = asyncAppend
         self.asyncThread = None
 
     def run(self):
@@ -60,8 +60,7 @@ class Client():
             return None  # async call, no immediate result
         else:
             msgrcv = self.chan.receive_from(self.server)  # wait for response
-            
-        return msgrcv[1]  # pass it to caller
+            return msgrcv[1]  # pass it to caller
 
 
 class Server:

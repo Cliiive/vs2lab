@@ -8,7 +8,7 @@ lab_logging.setup(stream_level=logging.INFO)
 logger = logging.getLogger('vs2lab.lab2.rpc.runcl')
 
 def callback(result):
-    print("Asynchronous append result: {}".format(result))
+    logger.info("Asynchronous append result: {}".format(result.value))
     
 cl = rpc.Client(asyncAppend=True)
 cl.run()
