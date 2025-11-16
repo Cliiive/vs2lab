@@ -5,12 +5,15 @@ from context import lab_logging
 
 lab_logging.setup(stream_level=logging.INFO)
 
-cl = rpc.Client()
+def callback(result):
+    print("Asynchronous append result: {}".format(result))
+    
+cl = rpc.Client(asyncAppend=True)
 cl.run()
 
 base_list = rpc.DBList({'foo'})
-result_list = cl.append('bar', base_list)
+result_list = cl.append('bar', base_list, callback)
 
-print("Result: {}".format(result_list.value))
+#print("Result: {}".format(result_list.value))
 
 cl.stop()
