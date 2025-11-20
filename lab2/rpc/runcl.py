@@ -20,10 +20,8 @@ logger.info("Sending append request to server...")
 start_time = time.time()
 
 for i in range(20):
-    logger.info("Doing other work while waiting for server response... {}".format(i))
+    logger.info("Doing other work while waiting for server response...")
     time.sleep(0.5)
-
-result_list = cl.append('bar', base_list)
 
 # Show that client was waiting
 elapsed_time = time.time() - start_time
