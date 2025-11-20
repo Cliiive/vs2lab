@@ -69,9 +69,9 @@ class Client():
                     msgrcv = self.chan.receive_from(self.server)  # wait for response
                     return msgrcv[1]  # pass it to caller
             else:
-                logger.warning("Expected: OK recieved: {}".format(msgrcv[1]))
+                raise RuntimeError("Expected: OK recieved: {}".format(msgrcv[1]))
         else:
-            logger.warning("Timeout occured")
+            raise TimeoutError
 
 
 class Server:
