@@ -1,8 +1,12 @@
 import constRPC
 import threading
 import time
+import logging
 
-from context import lab_channel
+from context import lab_channel, lab_logging
+
+lab_logging.setup(stream_level=logging.INFO)
+logger = logging.getLogger('vs2lab.lab2.rpc.rpc')
 
 
 class DBList:
@@ -22,7 +26,6 @@ class AsyncAppend(threading.Thread):
         self.callback = callback
 
     def run(self):
-        self.chan.send_to(self.server, self.msglst)  # send msg to server
         msgrcv = self.chan.receive_from(self.server)  # wait for response
         if self.callback:
             self.callback(msgrcv[1])  # pass it to caller
@@ -49,18 +52,26 @@ class Client():
         assert isinstance(db_list, DBList)
         msglst = (constRPC.APPEND, data, db_list)  # message payload
         self.chan.send_to(self.server, msglst)  # send msg to server
-        
-        if self.asyncThread and self.asyncThread.is_alive():
-            self.asyncThread.join()
-            self.asyncThread = None
+        msgrcv = self.chan.receive_from(self.server, 10)
+        if msgrcv is not None:
+            if msgrcv[1] == constRPC.OK:
+                logger.info("OK recieved")
 
-        if self.asyncAppend:
-            self.asyncThread = AsyncAppend(self.chan, self.server, msglst, callback)
-            self.asyncThread.start()
-            return None  # async call, no immediate result
+                if self.asyncThread and self.asyncThread.is_alive():
+                    self.asyncThread.join()
+                    self.asyncThread = None
+
+                if self.asyncAppend:
+                    self.asyncThread = AsyncAppend(self.chan, self.server, msglst, callback)
+                    self.asyncThread.start()
+                    return None  # async call, no immediate result
+                else:
+                    msgrcv = self.chan.receive_from(self.server)  # wait for response
+                    return msgrcv[1]  # pass it to caller
+            else:
+                logger.warning("Expected: OK recieved: {}".format(msgrcv[1]))
         else:
-            msgrcv = self.chan.receive_from(self.server)  # wait for response
-            return msgrcv[1]  # pass it to caller
+            logger.warning("Timeout occured")
 
 
 class Server:
@@ -81,8 +92,9 @@ class Server:
             if msgreq is not None:
                 client = msgreq[0]  # see who is the caller
                 msgrpc = msgreq[1]  # fetch call & parameters
-                
+
                 if constRPC.APPEND == msgrpc[0]:  # check what is being requested
+                    self.chan.send_to({client}, constRPC.OK) # send Acknowledgment
                     # Simulate long execution time with 10 second pause
                     time.sleep(10)
                     result = self.append(msgrpc[1], msgrpc[2])  # do local call
