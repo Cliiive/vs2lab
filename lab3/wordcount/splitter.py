@@ -19,4 +19,8 @@ def splitter():
     for line in contents:
         sender.send(line.encode())
 
+    # Send one DONE per mapper to allow all mapper threads to terminate
+    for _ in range(const.NUM_MAPPERS):
+        sender.send_string(const.DONE)
+
     time.sleep(1)

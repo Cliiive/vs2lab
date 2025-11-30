@@ -17,17 +17,19 @@ class WordCountReducer(threading.Thread):
     def run(self):
         logging.info(f"{self.id} started counting {self.word}")
         while True:
-            msg: str = pickle.loads(self.pull_socket.recv())
-            if msg[1] == const.DONE:
-                logging.info(f"{self.id} received DONE signal. Exiting.")
+            msg = self.pull_socket.recv_string()
+            if msg == const.DONE:
+                logging.info(f"{self.id} received all DONE signals. Exiting.")
                 break
-            logging.info("{}: received {} from {}".format(self.id, msg[1], msg[0]))
-            self.counter += 1
 
-def get_mapper_addresses(count):
+            logging.debug(f"{self.id}: received '{msg}'")
+            if msg == self.word:
+                self.counter += 1
+
+def get_reducer_addresses(count):
     addresses = []
     for i in range(int(count)):
-        addr = "tcp://" + const.HOST + ":" + str(int(const.MAPPER_PORT) + i)
+        addr = "tcp://" + const.HOST + ":" + str(int(const.REDUCER_PORT) + i)
         addresses.append(addr)
     return addresses
 
@@ -39,30 +41,33 @@ def configure_logging():
 def main():
     configure_logging()
     
-    "1. Connect to all mapper sockets"
-    addresses = get_mapper_addresses(const.NUM_MAPPERS)
+    # 1. Bind reducer sockets (one per reducer)
     context = zmq.Context()
-    pull_socket = context.socket(zmq.PULL)  # create a pull socket
-    for addr in addresses:
-        pull_socket.connect(addr)  # connect to each mapper address
-
-    "2. Start reducers for each word to count"
+    addresses = get_reducer_addresses(const.NUM_REDUCERS)
     reducers = []
-    for i in range(len(const.WORDS_TO_COUNT)):
-        reducer: WordCountReducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
+    for i, addr in enumerate(addresses):
+        pull_socket = context.socket(zmq.PULL)
+        pull_socket.bind(addr)
+        logging.info(f"Binding reducer {i+1} PULL at {addr}")
+        reducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
         reducers.append(reducer)
         reducer.start()
     
-    "3. Wait for all reducers to finish"
+    # 2. Wait for all reducers to finish
     for reducer in reducers:
         reducer.join()
 
     logging.info("All reducers have finished processing.")
     logging.info("Results collected:")
     
-    "4. Print results"
+    # 3. Print results
     for reducer in reducers:
         logging.info(f"{reducer.id} processed {reducer.counter} items.")
+
+    # Print final result for each word
+    print("Final results:")
+    for reducer in reducers:
+        print(f"{reducer.word}: {reducer.counter}")
 
 if __name__ == "__main__":
     main()
