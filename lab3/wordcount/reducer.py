@@ -1,3 +1,4 @@
+import pickle
 import sys
 import zmq
 import threading
@@ -6,20 +7,26 @@ import logging
 import const
 
 class WordCountReducer(threading.Thread):
-    def __init__(self, id, message, subscriber):
+    def __init__(self, id, word, pull_socket):
         threading.Thread.__init__(self)
         self.id = id
-        self.message = message
-        self.subscriber = subscriber
+        self.word = word
+        self.pull_socket = pull_socket
         self.counter = 0
-        
+
     def run(self):
+        logging.info(f"{self.id} started counting {self.word}")
         while True:
-            self.subscriber.setsockopt(zmq.SUBSCRIBE, self.message)  # subscribe to messages
-            logging.info(f"{self.id} started counting {self.message}")
-            msg = self.subscriber.recv()  # receive a message
-            logging.info(f"{self.id} received message: {msg}")
+            work = pickle.loads(self.pull_socket.recv())  # receive work from a source
+            logging.info("{} received {} from {}".format(self.id, work[1], work[0]))
             self.counter += 1
+
+def get_mapper_addresses(count):
+    addresses = []
+    for i in range(int(count)):
+        addr = "tcp://" + const.HOST + ":" + str(int(const.MAPPER_PORT) + i)
+        addresses.append(addr)
+    return addresses
 
 def configure_logging():
     logging.basicConfig(level=logging.DEBUG,
@@ -27,22 +34,21 @@ def configure_logging():
                         datefmt='%Y-%m-%d %H:%M:%S')
 
 def main():
+    addresses = get_mapper_addresses(const.NUM_MAPPERS)
     configure_logging()
     
-    address = "tcp://127.0.0.1:" + const.REDUCER_PORT
     context = zmq.Context()
-    subscriber = context.socket(zmq.SUB)
-    subscriber.connect(address)
+    pull_socket = context.socket(zmq.PULL)  # create a pull socket
+
+    for addr in addresses:
+        pull_socket.connect(addr)  # connect to each mapper address
 
     # Create 3 reducer threads
     reducers = []
-    for i in range(3):
-        reducer_id = f"Reducer-{i+1}"
-        reducer = WordCountReducer(f"Reducer-{i+1}", "TESTMSG", subscriber)
+    for i in range(len(const.WORDS_TO_COUNT)):
+        reducer: WordCountReducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
         reducers.append(reducer)
         reducer.start()
-
-    logging.info("All reducers started.")
         
     for reducer in reducers:
         reducer.join()
