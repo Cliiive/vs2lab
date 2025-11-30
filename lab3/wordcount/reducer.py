@@ -17,8 +17,11 @@ class WordCountReducer(threading.Thread):
     def run(self):
         logging.info(f"{self.id} started counting {self.word}")
         while True:
-            work = pickle.loads(self.pull_socket.recv())  # receive work from a source
-            logging.info("{} received {} from {}".format(self.id, work[1], work[0]))
+            msg: str = pickle.loads(self.pull_socket.recv())
+            if msg[1] == const.DONE:
+                logging.info(f"{self.id} received DONE signal. Exiting.")
+                break
+            logging.info("{}: received {} from {}".format(self.id, msg[1], msg[0]))
             self.counter += 1
 
 def get_mapper_addresses(count):
@@ -34,28 +37,30 @@ def configure_logging():
                         datefmt='%Y-%m-%d %H:%M:%S')
 
 def main():
-    addresses = get_mapper_addresses(const.NUM_MAPPERS)
     configure_logging()
     
+    "1. Connect to all mapper sockets"
+    addresses = get_mapper_addresses(const.NUM_MAPPERS)
     context = zmq.Context()
     pull_socket = context.socket(zmq.PULL)  # create a pull socket
-
     for addr in addresses:
         pull_socket.connect(addr)  # connect to each mapper address
 
-    # Create 3 reducer threads
+    "2. Start reducers for each word to count"
     reducers = []
     for i in range(len(const.WORDS_TO_COUNT)):
         reducer: WordCountReducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
         reducers.append(reducer)
         reducer.start()
-        
+    
+    "3. Wait for all reducers to finish"
     for reducer in reducers:
         reducer.join()
 
     logging.info("All reducers have finished processing.")
     logging.info("Results collected:")
     
+    "4. Print results"
     for reducer in reducers:
         logging.info(f"{reducer.id} processed {reducer.counter} items.")
 
