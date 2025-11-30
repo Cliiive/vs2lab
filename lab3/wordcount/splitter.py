@@ -2,23 +2,21 @@ import const
 import time
 import zmq
 
-NUM_MAPPERS = 3
+def splitter():
+    context = zmq.Context()
+    sender = context.socket(zmq.PUSH)  # create a push socket
 
+    address = "tcp://" + const.HOST + ":" + const.SPLITTER_PORT  # how and where to communicate
+    sender.bind(address)  # bind socket to the address
 
-context = zmq.Context()
-sender = context.socket(zmq.PUSH)  # create a push socket
+    print(f"[SPLITTER] Running at {address}")
 
-address = "tcp://" + const.HOST + ":" + const.SPLITTER_PORT  # how and where to communicate
-sender.bind(address)  # bind socket to the address
+    time.sleep(1) # wait to allow all clients to connect
 
-print(f"[SPLITTER] Running at {address}")
+    with open('text.txt', 'r') as file:
+        contents = file.readlines() # read contents of a text file
 
-time.sleep(1) # wait to allow all clients to connect
+    for line in contents:
+        sender.send(line.encode())
 
-with open('text.txt', 'r') as file:
-    contents = file.readlines() # read contents of a text file
-
-for line in contents:
-    sender.send(line.encode())
-
-time.sleep(1)
+    time.sleep(1)
