@@ -10,6 +10,7 @@ Mapper for MapReduce Wordcount
 import sys
 import zmq
 import const
+import threading
 
 class WordCounterMapper(threading.Thread):
     def __init__(self, id, splitter_socket, reducer_sockets):
@@ -18,41 +19,58 @@ class WordCounterMapper(threading.Thread):
         self.splitter_socket = splitter_socket
         self.reducer_sockets = reducer_sockets
         self.counter = 0
-
-    def main():
-            context = zmq.Context()
-
-            # Connect to splitter(s)
-            splitter = context.socket(zmq.PULL)
-            for i in range(getattr(const, "NUM_SPLITTERS", 1)):
-                splitter.connect("tcp://{}:{}".format(const.HOST, int(const.SPLITTER_PORT) + i))
-
-            # Create PUSH sockets for each reducer
-            reducers = []
-            for i in range(const.NUM_REDUCERS):
-                reducer = context.socket(zmq.PUSH)
-                reducer.connect("tcp://{}:{}".format(const.HOST, int(const.REDUCER_PORT) + i))
-                reducers.append(reducer)
-
-            # Process sentences forever
-                while True:
-                    sentence = splitter.recv_string()
-                    if sentence == const.DONE:
-                        for r in reducers:
-                            r.send_string(const.DONE)
-                        break
-
-                    # Progress indicator
-                    sys.stdout.write('.')
-                    sys.stdout.flush()
-
-                    # Normalize and split sentence
-                    words = sentence.lower().replace(',', '').replace('.', '').replace('!', '').replace('?', '').split()
-
-                    # Send each tracked word to the appropriate reducer
-                    for word in words:
-                        if word in const.WORDS_TO_COUNT:
-                            reducer_index = const.WORDS_TO_COUNT.index(word) % const.NUM_REDUCERS
-                            reducers[reducer_index].send_string(word)
         
+    def run(self):
+        print(f"[{self.id}] started")
+        while True:
+            sentence = self.splitter_socket.recv_string()
+            if sentence == const.DONE:
+                print(f"[{self.id}] received DONE signal. Exiting.")
+                for r in self.reducer_sockets:
+                    r.send_string(const.DONE)
+                break
+
+            print(f"[{self.id}] received sentence: {sentence}")
+
+            # Normalize and split sentence
+            words = sentence.lower().replace(',', '').replace('.', '').replace('!', '').replace('?', '').split()
+
+            # Send each tracked word to the appropriate reducer
+            for word in words:
+                if word in const.WORDS_TO_COUNT:
+                    reducer_index = const.WORDS_TO_COUNT.index(word) % const.NUM_REDUCERS
+                    self.reducer_sockets[reducer_index].send_string(word)
+                    print(f"[{self.id}] sent word '{word}' to reducer {reducer_index}")
+        
+
+def main():
+    # 1. Connect to splitter socket
+    context = zmq.Context()
+    splitter_address = "tcp://" + const.HOST + ":" + const.SPLITTER_PORT
+    splitter_socket = context.socket(zmq.PULL)
+    splitter_socket.connect(splitter_address)
+    print(f"[MAPPER] Connected to splitter at {splitter_address}")
+
+    # 2. Connect to reducer sockets
+    reducer_sockets = []
+    for i in range(const.NUM_REDUCERS):
+        reducer_address = "tcp://" + const.HOST + ":" + str(int(const.REDUCER_PORT) + i)
+        reducer_socket = context.socket(zmq.PUSH)
+        reducer_socket.connect(reducer_address)
+        reducer_sockets.append(reducer_socket)
+        print(f"[MAPPER] Connected to reducer {i} at {reducer_address}")
+
+    # 3. Start mapper threads
+    mappers = []
+    for i in range(const.NUM_MAPPERS):
+        mapper = WordCounterMapper(f"Mapper-{i+1}", splitter_socket, reducer_sockets)
+        mappers.append(mapper)
+        mapper.start()
+
+    # 4. Wait for all mappers to finish
+    for mapper in mappers:
+        mapper.join()
+
+    print("[MAPPER] All mappers have finished processing.")
+    
 
