@@ -11,50 +11,48 @@ import sys
 import zmq
 import const
 
-context = zmq.Context()
+class WordCounterMapper(threading.Thread):
+    def __init__(self, id, splitter_socket, reducer_sockets):
+        threading.Thread.__init__(self)
+        self.id = id
+        self.splitter_socket = splitter_socket
+        self.reducer_sockets = reducer_sockets
+        self.counter = 0
 
-# Socket to receive messages on (sentences from splitter)
-# max 1
-splitter = context.socket(zmq.PULL)
-splitter.connect("tcp://"+ const.HOST +":" + str(int(const.SPLITTER_PORT)))
+    def main():
+            context = zmq.Context()
 
-# Create separate PUSH sockets for each reducer
-# This allows us to control which reducer gets which word
-# max 32
-reducers = []
-for i in range(const.NUM_REDUCERS):
-    reducer = context.socket(zmq.PUSH)
-    # Each reducer binds to REDUCER_PORT + i
-    reducer.connect("tcp://"+ const.HOST +":" + str(int(const.REDUCER_PORT) + i))
-    reducers.append(reducer)
+            # Connect to splitter(s)
+            splitter = context.socket(zmq.PULL)
+            for i in range(getattr(const, "NUM_SPLITTERS", 1)):
+                splitter.connect("tcp://{}:{}".format(const.HOST, int(const.SPLITTER_PORT) + i))
 
-# Process sentences forever
-while True:
+            # Create PUSH sockets for each reducer
+            reducers = []
+            for i in range(const.NUM_REDUCERS):
+                reducer = context.socket(zmq.PUSH)
+                reducer.connect("tcp://{}:{}".format(const.HOST, int(const.REDUCER_PORT) + i))
+                reducers.append(reducer)
 
+            # Process sentences forever
+                while True:
+                    sentence = splitter.recv_string()
+                    if sentence == const.DONE:
+                        for r in reducers:
+                            r.send_string(const.DONE)
+                        break
 
-    # Receive sentence from splitter
-    sentence = splitter.recv_string()
-    if sentence == const.DONE:
-        # Propagate DONE signal to all reducers
-        for reducer in reducers:
-            reducer.send_string(const.DONE)
-        break  # Exit the loop and end the mapper
-    
-    # Simple progress indicator
-    sys.stdout.write('.')
-    sys.stdout.flush()
-    
-    # Split sentence into words (remove punctuation and convert to lowercase)
-    words = sentence.lower().replace(',', '').replace('.', '').replace('!', '').replace('?', '').split()
-    
-    # Send each word to the correct reducer using fixed schema (hash)
-    # This ensures all instances of the same word go to the same reducer
-    for word in words:
-        # iterrate over WORDS_TO_COUNT to find the index of the word that matches the current word
-        # if found then push to the reducer at index (index % NUM_REDUCERS)
-        reducer_index = None
-        for i in range(len(const.WORDS_TO_COUNT)):
-            if word == const.WORDS_TO_COUNT[i]:
-                reducer_index = const.NUM_REDUCERS + i;
-                reducers[reducer_index].send_string(word)
-                break
+                    # Progress indicator
+                    sys.stdout.write('.')
+                    sys.stdout.flush()
+
+                    # Normalize and split sentence
+                    words = sentence.lower().replace(',', '').replace('.', '').replace('!', '').replace('?', '').split()
+
+                    # Send each tracked word to the appropriate reducer
+                    for word in words:
+                        if word in const.WORDS_TO_COUNT:
+                            reducer_index = const.WORDS_TO_COUNT.index(word) % const.NUM_REDUCERS
+                            reducers[reducer_index].send_string(word)
+        
+
