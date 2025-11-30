@@ -16,8 +16,7 @@ context = zmq.Context()
 # Socket to receive messages on (sentences from splitter)
 # max 1
 splitter = context.socket(zmq.PULL)
-splitter.connect("tcp://"+ HOST +":" + str(int(const.SPLITTER_PORT)))
-splitter.append(splitter)
+splitter.connect("tcp://"+ const.HOST +":" + str(int(const.SPLITTER_PORT)))
 
 # Create separate PUSH sockets for each reducer
 # This allows us to control which reducer gets which word
@@ -26,7 +25,7 @@ reducers = []
 for i in range(const.NUM_REDUCERS):
     reducer = context.socket(zmq.PUSH)
     # Each reducer binds to REDUCER_PORT + i
-    reducer.connect("tcp://"+ HOST +":" + str(int(const.REDUCER_PORT) + i))
+    reducer.connect("tcp://"+ const.HOST +":" + str(int(const.REDUCER_PORT) + i))
     reducers.append(reducer)
 
 # Process sentences forever
@@ -34,7 +33,7 @@ while True:
 
 
     # Receive sentence from splitter
-    # sentence = splitters.recv_string()
+    sentence = splitter.recv_string()
     if sentence == const.DONE:
         # Propagate DONE signal to all reducers
         for reducer in reducers:
