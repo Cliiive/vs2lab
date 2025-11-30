@@ -1,6 +1,7 @@
 
 # Created by https://www.gitignore.io/api/python,pycharm,redis,osx,windows,linux
-
+Pipfile.lock
+.devcontainer/
 ### Linux ###
 *~
 
