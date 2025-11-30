@@ -20,3 +20,5 @@ with open('text.txt', 'r') as file:
 
 for line in contents:
     sender.send(line.encode())
+
+time.sleep(1)
