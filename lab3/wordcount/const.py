@@ -8,9 +8,10 @@ DONE = "9_9_9";
 WORDS_TO_COUNT = [
     "the",
     "and",
+    "than"
 ]
 
 # Defines numbers of components to start
 NUM_SPLITTERS = 1
 NUM_MAPPERS = 3
-NUM_REDUCERS = 2
+NUM_REDUCERS = 3
