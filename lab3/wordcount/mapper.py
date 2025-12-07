@@ -13,6 +13,9 @@ import const
 import threading
 import logging
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("MAPPER")
+
 class WordCounterMapper(threading.Thread):
     def __init__(self, id, splitter_socket, reducer_sockets):
         threading.Thread.__init__(self)
@@ -22,15 +25,15 @@ class WordCounterMapper(threading.Thread):
         self.counter = 0
         
     def run(self):
-        logging.info(f"[{self.id}] started")  # important lifecycle
+        logger.info(f"{self.id} started")  # important lifecycle
         while True:
             sentence = self.splitter_socket.recv_string()
             if sentence == const.DONE:
-                logging.info(f"[{self.id}] received DONE signal. Exiting.")  # important lifecycle
+                logger.info(f"{self.id} received DONE signal. Exiting.")  # important lifecycle
                 for r in self.reducer_sockets:
                     r.send_string(const.DONE)
                 break
-            logging.debug(f"[{self.id}] received sentence: {sentence}")  # routine flow
+            logger.debug(f"{self.id} received sentence: {sentence}")  # routine flow
 
             # Normalize and split sentence
             words = sentence.lower().replace(',', '').replace('.', '').replace('!', '').replace('?', '').split()
@@ -40,7 +43,7 @@ class WordCounterMapper(threading.Thread):
                 if word in const.WORDS_TO_COUNT:
                     reducer_index = const.WORDS_TO_COUNT.index(word) % const.NUM_REDUCERS
                     self.reducer_sockets[reducer_index].send_string(word)
-                    logging.debug(f"[{self.id}] sent word '{word}' to reducer {reducer_index}")  # routine flow
+                    logger.debug(f"{self.id} sent word '{word}' to reducer {reducer_index}")  # routine flow
 
 def main():
     # 1. Connect to splitter socket
@@ -48,7 +51,7 @@ def main():
     splitter_address = "tcp://" + const.HOST + ":" + const.SPLITTER_PORT
     splitter_socket = context.socket(zmq.PULL)
     splitter_socket.connect(splitter_address)
-    logging.info(f"[MAPPER] Connected to splitter at {splitter_address}")  # important lifecycle
+    logger.info(f"Connected to splitter at {splitter_address}")  # important lifecycle
 
     # 2. Connect to reducer sockets
     reducer_sockets = []
@@ -57,7 +60,7 @@ def main():
         reducer_socket = context.socket(zmq.PUSH)
         reducer_socket.connect(reducer_address)
         reducer_sockets.append(reducer_socket)
-        logging.info(f"[MAPPER] Connected to reducer {i} at {reducer_address}")  # important lifecycle
+        logger.info(f"Connected to reducer {i} at {reducer_address}")  # important lifecycle
 
     # 3. Start mapper threads
     mappers = []
@@ -70,6 +73,9 @@ def main():
     for mapper in mappers:
         mapper.join()
 
-    logging.info("[MAPPER] All mappers have finished processing.")  # important lifecycle
+    logger.info("All mappers have finished processing.")  # important lifecycle
+
+if __name__ == "__main__":
+    main()
 
 

@@ -6,6 +6,8 @@ import logging
 
 import const
 
+logger = logging.getLogger("REDUCER")
+
 class WordCountReducer(threading.Thread):
     def __init__(self, id, word, pull_socket):
         threading.Thread.__init__(self)
@@ -15,13 +17,13 @@ class WordCountReducer(threading.Thread):
         self.counter = 0
 
     def run(self):
-        logging.info(f"{self.id} started counting {self.word}")  # important lifecycle
+        logger.info(f"{self.id} started counting {self.word}")  # important lifecycle
         while True:
             msg = self.pull_socket.recv_string()
             if msg == const.DONE:
-                logging.info(f"{self.id} received all DONE signals. Exiting.")  # important lifecycle
+                logger.info(f"{self.id} received DONE signal. Exiting.")  # important lifecycle
                 break
-            logging.debug(f"{self.id}: received '{msg}'")  # routine flow
+            logger.debug(f"{self.id} received '{msg}'")  # routine flow
             if msg == self.word:
                 self.counter += 1
 
@@ -34,7 +36,7 @@ def get_reducer_addresses(count):
 
 def configure_logging():
     logging.basicConfig(level=logging.DEBUG,
-                        format='%(asctime)s %(levelname)s %(message)s',
+                        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
                         datefmt='%Y-%m-%d %H:%M:%S')
 
 def main():
@@ -46,7 +48,7 @@ def main():
     for i, addr in enumerate(addresses):
         pull_socket = context.socket(zmq.PULL)
         pull_socket.bind(addr)
-        logging.info(f"Binding reducer {i+1} PULL at {addr}")  # important lifecycle
+        logger.info(f"Reducer-{i+1} Binding PULL at {addr}")  # important lifecycle
         reducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
         reducers.append(reducer)
         reducer.start()
@@ -55,12 +57,12 @@ def main():
     for reducer in reducers:
         reducer.join()
 
-    logging.info("All reducers have finished processing.")  # important lifecycle
-    logging.debug("Results collected:")  # routine flow
+    logger.info("All reducers have finished processing.")  # important lifecycle
+    logger.debug("Results collected:")  # routine flow
     
     # 3. Print results (keep as stdout)
     for reducer in reducers:
-        logging.info(f"{reducer.id} processed {reducer.counter} items.")  # important summary
+        logger.info(f"{reducer.id} processed {reducer.counter} items.")  # important summary
 
     print("Final results:")
     for reducer in reducers:
