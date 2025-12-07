@@ -15,14 +15,13 @@ class WordCountReducer(threading.Thread):
         self.counter = 0
 
     def run(self):
-        logging.info(f"{self.id} started counting {self.word}")
+        logging.info(f"{self.id} started counting {self.word}")  # important lifecycle
         while True:
             msg = self.pull_socket.recv_string()
             if msg == const.DONE:
-                logging.info(f"{self.id} received all DONE signals. Exiting.")
+                logging.info(f"{self.id} received all DONE signals. Exiting.")  # important lifecycle
                 break
-
-            logging.debug(f"{self.id}: received '{msg}'")
+            logging.debug(f"{self.id}: received '{msg}'")  # routine flow
             if msg == self.word:
                 self.counter += 1
 
@@ -40,7 +39,6 @@ def configure_logging():
 
 def main():
     configure_logging()
-    
     # 1. Bind reducer sockets (one per reducer)
     context = zmq.Context()
     addresses = get_reducer_addresses(const.NUM_REDUCERS)
@@ -48,7 +46,7 @@ def main():
     for i, addr in enumerate(addresses):
         pull_socket = context.socket(zmq.PULL)
         pull_socket.bind(addr)
-        logging.info(f"Binding reducer {i+1} PULL at {addr}")
+        logging.info(f"Binding reducer {i+1} PULL at {addr}")  # important lifecycle
         reducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
         reducers.append(reducer)
         reducer.start()
@@ -57,14 +55,13 @@ def main():
     for reducer in reducers:
         reducer.join()
 
-    logging.info("All reducers have finished processing.")
-    logging.info("Results collected:")
+    logging.info("All reducers have finished processing.")  # important lifecycle
+    logging.debug("Results collected:")  # routine flow
     
-    # 3. Print results
+    # 3. Print results (keep as stdout)
     for reducer in reducers:
-        logging.info(f"{reducer.id} processed {reducer.counter} items.")
+        logging.info(f"{reducer.id} processed {reducer.counter} items.")  # important summary
 
-    # Print final result for each word
     print("Final results:")
     for reducer in reducers:
         print(f"{reducer.word}: {reducer.counter}")
