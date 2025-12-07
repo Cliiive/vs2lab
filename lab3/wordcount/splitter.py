@@ -20,15 +20,22 @@ def splitter():
     with open('text.txt', 'r') as file:
         contents = file.readlines() # read contents of a text file
 
+    line_count = 0
     for line in contents:
-        logging.debug("[SPLITTER] sending line")  # routine flow
-        sender.send(line.encode())
-        logger.debug(f"Sent line: {line.strip()}")
+        line = line.strip()  # Remove whitespace/newlines
+        if line:  # Only send non-empty lines
+            logger.debug(f"Sending line: {line}")  # routine flow
+            sender.send_string(line)  # Send as string, not bytes
+            line_count += 1
+
+    logger.info(f"Sent {line_count} lines")
 
     # Send one DONE per mapper to allow all mapper threads to terminate
-    logger.info("Sending DONE")
-    for _ in range(const.NUM_MAPPERS):
-        logging.debug("[SPLITTER] sending DONE")  # routine flow
+    logger.info(f"Sending {const.NUM_MAPPERS} DONE signals")
+    for i in range(const.NUM_MAPPERS):
+        logger.debug(f"Sending DONE signal {i+1}/{const.NUM_MAPPERS}")  # routine flow
         sender.send_string(const.DONE)
 
     time.sleep(1)
+    sender.close()
+    context.term()
