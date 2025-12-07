@@ -9,23 +9,34 @@ import const
 logger = logging.getLogger("REDUCER")
 
 class WordCountReducer(threading.Thread):
-    def __init__(self, id, word, pull_socket):
+    def __init__(self, id, pull_socket):
         threading.Thread.__init__(self)
         self.id = id
-        self.word = word
         self.pull_socket = pull_socket
-        self.counter = 0
+        self.word_counts = {}  # Count all words, not just one
+        self.done_count = 0
 
     def run(self):
-        logger.info(f"{self.id} started counting {self.word}")  # important lifecycle
+        logger.info(f"{self.id} started")  # important lifecycle
+        
+        # Expect one DONE signal per mapper
+        expected_done_signals = const.NUM_MAPPERS
+        
         while True:
             msg = self.pull_socket.recv_string()
             if msg == const.DONE:
-                logger.info(f"{self.id} received DONE signal. Exiting.")  # important lifecycle
-                break
-            logger.debug(f"{self.id} received '{msg}'")  # routine flow
-            if msg == self.word:
-                self.counter += 1
+                self.done_count += 1
+                logger.info(f"{self.id} received DONE signal ({self.done_count}/{expected_done_signals})")
+                if self.done_count >= expected_done_signals:
+                    logger.info(f"{self.id} received all DONE signals. Exiting.")
+                    break
+            else:
+                logger.debug(f"{self.id} received '{msg}'")  # routine flow
+                # Count the word
+                if msg in self.word_counts:
+                    self.word_counts[msg] += 1
+                else:
+                    self.word_counts[msg] = 1
 
 def get_reducer_addresses(count):
     addresses = []
@@ -35,7 +46,7 @@ def get_reducer_addresses(count):
     return addresses
 
 def configure_logging():
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
                         datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -49,7 +60,7 @@ def main():
         pull_socket = context.socket(zmq.PULL)
         pull_socket.bind(addr)
         logger.info(f"Reducer-{i+1} Binding PULL at {addr}")  # important lifecycle
-        reducer = WordCountReducer(f"Reducer-{i+1}", const.WORDS_TO_COUNT[i], pull_socket)
+        reducer = WordCountReducer(f"Reducer-{i+1}", pull_socket)
         reducers.append(reducer)
         reducer.start()
     
@@ -58,15 +69,22 @@ def main():
         reducer.join()
 
     logger.info("All reducers have finished processing.")  # important lifecycle
-    logger.debug("Results collected:")  # routine flow
     
-    # 3. Print results (keep as stdout)
+    # 3. Collect and aggregate results
+    total_counts = {}
     for reducer in reducers:
-        logger.info(f"{reducer.id} processed {reducer.counter} items.")  # important summary
-
-    print("Final results:")
-    for reducer in reducers:
-        print(f"{reducer.word}: {reducer.counter}")
+        logger.info(f"{reducer.id} word counts: {reducer.word_counts}")
+        for word, count in reducer.word_counts.items():
+            if word in total_counts:
+                total_counts[word] += count
+            else:
+                total_counts[word] = count
+    
+    # 4. Print final results
+    print("\nFinal results:")
+    for word in const.WORDS_TO_COUNT:
+        count = total_counts.get(word, 0)
+        print(f"{word}: {count}")
 
 if __name__ == "__main__":
     main()
