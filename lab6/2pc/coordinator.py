@@ -13,9 +13,7 @@ from const2PC import TIMEOUT
 
 class Coordinator:
     """
-    Implements a two phase commit coordinator.
-    - state written to stable log (but recovery is not considered)
-    - simulates possible crash failure after vote request
+    Implements a three phase commit coordinator.
     """
 
     def __init__(self, chan):
@@ -41,30 +39,43 @@ class Coordinator:
         # Prepare participant information.
         self.participants = self.channel.subgroup('participant')
 
-    def wait_for_participants(self, msg):
+    def wait_for_participants(self, expected_msg):
+        """
+        Generic wait function for both VOTE and PRE-COMMIT phases.
+        """
         yet_to_receive = list(self.participants)
         while len(yet_to_receive) > 0:
+            # We wait for messages
             msg = self.channel.receive_from(self.participants, TIMEOUT)
 
             if (not msg) or (msg[1] == VOTE_ABORT):
+                # CASE: Timeout or Vote Abort
                 if self.state == 'WAIT':
+                    # Phase 1: If anyone fails/aborts, we must abort everyone.
                     reason = "timeout" if not msg else "local_abort from " + msg[0]
                     self._enter_state('ABORT')
-                    # Inform all participants about global abort
                     self.channel.send_to(self.participants, GLOBAL_ABORT)
                     return "Coordinator {} terminated in state ABORT. Reason: {}."\
                         .format(self.coordinator, reason)
                 else:
-                     # Ignore crashed participants in PRECOMMIT state
-                     # they already commited
-                    assert (self.state == 'PRECOMMIT') 
-                    assert (not msg[1]) # can't receive a VOTE_ABORT in PRECOMMIT state
-                    yet_to_receive.remove(msg[0])
+                    # Phase 3 (PRECOMMIT):
+                    # We are in PRECOMMIT. This means everyone already voted YES in Phase 1.
+                    # If someone crashes now (timeout), we MUST proceed to COMMIT according to 3PC.
+                    # We stop waiting for the crashed node and return success so 'run' proceeds.
+                    
+                    assert (self.state == 'PRECOMMIT')
+                    assert (not msg) # VOTE_ABORT is impossible in this phase
+                    
+                    self.logger.warning("Participant crashed during PRECOMMIT. Proceeding to GLOBAL_COMMIT anyway.")
+                    return None # Returning None means "Success/Continue" to the run loop
 
             else:
-                assert msg[1] == msg
+                # CASE: Success (Received the expected message)
+                # [FIX] Compare against the argument, not hardcoded VOTE_COMMIT
+                assert msg[1] == expected_msg 
                 yet_to_receive.remove(msg[0])
-
+        
+        return None
 
     def run(self):
         if random.random() > 3/4:  # simulate a crash
@@ -78,17 +89,24 @@ class Coordinator:
             return "Coordinator crashed in state WAIT."
 
         # Collect votes from all participants
-        self.wait_for_participants(VOTE_COMMIT)
+        # If this returns a string, it means we aborted.
+        abort_reason = self.wait_for_participants(VOTE_COMMIT)
+        if abort_reason:
+            return abort_reason
 
-        # all participants have locally committed
+        # --- PHASE 2: PRE-COMMIT ---
+        # All participants voted commit. Enter PRECOMMIT.
         self._enter_state('PRECOMMIT')
         self.channel.send_to(self.participants, PREPARE_COMMIT)
 
-        # PHASE 3:
         # Wait for the READY_COMMIT from all participants
+        # If a participant crashes here, wait_for_participants returns None (success)
+        # because we are in PRECOMMIT state.
         self.wait_for_participants(READY_COMMIT)
-        # all participants have locally committed
-        # Inform all participants about global commit
+        
+        # --- PHASE 3: GLOBAL COMMIT ---
+        self._enter_state('COMMIT')
         self.channel.send_to(self.participants, GLOBAL_COMMIT)
+        
         return "Coordinator {} terminated in state COMMIT."\
             .format(self.coordinator)
