@@ -3,7 +3,7 @@ import random
 import time
 
 from constMutex import ENTER, RELEASE, ALLOW, ACTIVE
-from constMutex import HEARTBEAT
+from constMutex import HEARTBEAT, WORKING
 
 
 class Process:
@@ -49,8 +49,11 @@ class Process:
         #######
         # track last seen time for peers to detect crashes
         self.last_seen = {}  # map: peer_id -> timestamp
+
+        self.working_proc = {}
         # how long (seconds) to wait until a peer is considered crashed
         self.peer_timeout = 5
+        self.work_timeout = 30
         #######
         self.logger = logging.getLogger("vs2lab.lab5.mutex.process.Process")
 
@@ -119,12 +122,20 @@ class Process:
         """Remove peers that did not send heartbeats recently."""
         now = time.time()
         removed = []
+
         for pid, ts in list(self.last_seen.items()):
+            for wpid, wts in list(self.working_proc.items()):
+                if now - wts > self.work_timeout:
+                    self.logger.warning("Detected working timeout peer {}".format(self.__mapid(pid)))
+                    self.working_proc.pop(wpid)
             if pid == self.process_id:
                 continue
             if now - ts > self.peer_timeout:
+                if pid in self.working_proc:
+                    continue
                 # mark as removed
-                removed.append(pid)
+                else:
+                    removed.append(pid)
 
         if removed:
             for pid in removed:
@@ -152,21 +163,13 @@ class Process:
             self.clock = max(self.clock, msg[0])  # Adjust clock value...
             self.clock = self.clock + 1  # ...and increment
 
-            # map message type to human readable label (include HEARTBEAT)
-            msg_type = None
-            if msg[2] == ENTER:
-                msg_type = 'ENTER'
-            elif msg[2] == ALLOW:
-                msg_type = 'ALLOW'
-            elif msg[2] == RELEASE:
-                msg_type = 'RELEASE'
-            elif msg[2] == HEARTBEAT:
-                msg_type = 'HEARTBEAT'
-            else:
-                msg_type = str(msg[2])
-
             self.logger.debug("{} received {} from {}.".format(
-                self.__mapid(), msg_type, self.__mapid(msg[1])))
+                self.__mapid(),
+                "ENTER" if msg[2] == ENTER
+                else "ALLOW" if msg[2] == ALLOW
+                else "RELEASE" if msg[2] == RELEASE
+                else "HEARTBEAT" if msg[2] == HEARTBEAT
+                else "WORKING", self.__mapid(msg[1])))
 
             if msg[2] == ENTER:
                 self.queue.append(msg)  # Append an ENTER request
@@ -185,6 +188,9 @@ class Process:
                 # assure release requester indeed has access (his ENTER is first in queue)
                 assert self.queue[0][1] == msg[1] and self.queue[0][2] == ENTER, 'State error: inconsistent remote RELEASE'
                 del (self.queue[0])  # Just remove first message
+                self.working_proc.pop(msg[1])
+            elif msg[2] == WORKING:
+                self.working_proc[msg[1]] = time.time()
 
             self.__cleanup_queue()  # Finally sort and cleanup the queue
         else:
@@ -239,12 +245,18 @@ class Process:
                     if time.time() - last_hb > 1:
                         self.__send_heartbeat()
                         last_hb = time.time()
+                        self.__check_peer_timeouts()
 
                 # Stay in CS for some time ...
                 sleep_time = random.randint(0, 2000)
                 self.logger.debug("{} enters CS for {} milliseconds."
                                   .format(self.__mapid(), sleep_time))
                 print(" CS <- {}".format(self.__mapid()))
+                ###
+                self.clock = self.clock + 1  # Increment clock value
+                msg = (self.clock, self.process_id, WORKING)
+                self.channel.send_to(self.other_processes, msg)
+                ###
                 time.sleep(sleep_time/1000)
 
                 # ... then leave CS
