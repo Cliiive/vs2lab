@@ -24,8 +24,8 @@ def splitter():
     for line in contents:
         line = line.strip()  # Remove whitespace/newlines
         if line:  # Only send non-empty lines
-            logger.debug(f"Sending line: {line}")  # routine flow
-            sender.send_string(line)  # Send as string, not bytes
+            logger.debug(f"Sending line: {line}")
+            sender.send_string(line)  # Send as string
             line_count += 1
 
     logger.info(f"Sent {line_count} lines")
@@ -33,7 +33,7 @@ def splitter():
     # Send one DONE per mapper to allow all mapper threads to terminate
     logger.info(f"Sending {const.NUM_MAPPERS} DONE signals")
     for i in range(const.NUM_MAPPERS):
-        logger.debug(f"Sending DONE signal {i+1}/{const.NUM_MAPPERS}")  # routine flow
+        logger.debug(f"Sending DONE signal {i+1}/{const.NUM_MAPPERS}")
         sender.send_string(const.DONE)
 
     time.sleep(1)

@@ -38,19 +38,19 @@ class WordCounterMapper(threading.Thread):
             reducer_socket.connect(reducer_address)
             reducer_sockets.append(reducer_socket)
         
-        logger.info(f"{self.id} started and connected")  # important lifecycle
+        logger.info(f"{self.id} started and connected") 
         
         while True:
             sentence = splitter_socket.recv_string()
             if sentence == const.DONE:
-                logger.info(f"{self.id} received DONE signal. Forwarding to reducers.")  # important lifecycle
+                logger.info(f"{self.id} received DONE signal. Forwarding to reducers.") 
                 # Send DONE to all reducers
                 for r in reducer_sockets:
                     r.send_string(const.DONE)
                 break
             
-            logger.debug(f"{self.id} received sentence: {sentence}")  # routine flow
-
+            logger.debug(f"{self.id} received sentence: {sentence}")  
+            
             # Normalize: lowercase and remove punctuation (keep only letters and spaces)
             sentence_normalized = re.sub(r'[^a-z\s]', ' ', sentence.lower())
             words = sentence_normalized.split()
@@ -62,7 +62,7 @@ class WordCounterMapper(threading.Thread):
                     reducer_index = const.WORDS_TO_COUNT.index(word) % const.NUM_REDUCERS
                     reducer_sockets[reducer_index].send_string(word)
                     self.counter += 1
-                    logger.debug(f"{self.id} sent word '{word}' to reducer {reducer_index}")  # routine flow
+                    logger.debug(f"{self.id} sent word '{word}' to reducer {reducer_index}")  
         
         logger.info(f"{self.id} processed {self.counter} words total")
         

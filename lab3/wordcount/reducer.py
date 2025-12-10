@@ -13,11 +13,11 @@ class WordCountReducer(threading.Thread):
         threading.Thread.__init__(self)
         self.id = id
         self.pull_socket = pull_socket
-        self.word_counts = {}  # Count all words, not just one
+        self.word_counts = {}  
         self.done_count = 0
 
     def run(self):
-        logger.info(f"{self.id} started")  # important lifecycle
+        logger.info(f"{self.id} started")
         
         # Expect one DONE signal per mapper
         expected_done_signals = const.NUM_MAPPERS
@@ -31,7 +31,7 @@ class WordCountReducer(threading.Thread):
                     logger.info(f"{self.id} received all DONE signals. Exiting.")
                     break
             else:
-                logger.debug(f"{self.id} received '{msg}'")  # routine flow
+                logger.debug(f"{self.id} received '{msg}'")
                 # Count the word
                 if msg in self.word_counts:
                     self.word_counts[msg] += 1
@@ -59,7 +59,7 @@ def main():
     for i, addr in enumerate(addresses):
         pull_socket = context.socket(zmq.PULL)
         pull_socket.bind(addr)
-        logger.info(f"Reducer-{i+1} Binding PULL at {addr}")  # important lifecycle
+        logger.info(f"Reducer-{i+1} Binding PULL at {addr}") 
         reducer = WordCountReducer(f"Reducer-{i+1}", pull_socket)
         reducers.append(reducer)
         reducer.start()
@@ -68,7 +68,7 @@ def main():
     for reducer in reducers:
         reducer.join()
 
-    logger.info("All reducers have finished processing.")  # important lifecycle
+    logger.info("All reducers have finished processing.") 
     
     # 3. Collect and aggregate results
     total_counts = {}
