@@ -58,8 +58,6 @@ class Participant:
         """
         self.logger.info(f"{self.participant} is the new coordinator! Taking over in state {state}.")
         
-        self.channel.send_to(self.all_participants, self.state)
-        
         # Case 1: Pk is in READY (The README calls this WAIT for Coords, but Participants are in READY here)
         # Logic: We voted YES, but we never got a PREPARE_COMMIT. We don't know if someone else voted NO.
         # Safe decision: ABORT
@@ -89,26 +87,19 @@ class Participant:
         """
         self.logger.info(f"{self.participant} Waiting for decision from new coordinator...")
         
-        # We assume the coordinator sends up to 2 messages:
-        # 1. State Announcement (optional/sync)
-        # 2. Final Decision (Global Commit/Abort)
+        msg = self.channel.receive_from(self.all_participants, TIMEOUT)
         
-        while True:
-            msg = self.channel.receive_from(self.all_participants, TIMEOUT)
-            
-            if not msg:
-                self.logger.error(f"{self.participant}: New coordinator timed out! Protocol failed.")
-                return
+        if not msg:
+            self.logger.error(f"{self.participant}: New coordinator timed out! Protocol failed.")
+            return
 
-            # Check if this is the Final Decision
-            if msg == GLOBAL_ABORT:
-                self.logger.info(f"{self.participant} Received GLOBAL_ABORT from new coordinator.")
-                self._enter_state('ABORT')
-                break # Exit loop, we are done
-            elif msg == GLOBAL_COMMIT:
-                self.logger.info(f"{self.participant} Received GLOBAL_COMMIT from new coordinator.")
-                self._enter_state('COMMIT')
-                break # Exit loop, we are done
+        # Check if this is the Final Decision
+        if msg == GLOBAL_ABORT:
+            self.logger.info(f"{self.participant} Received GLOBAL_ABORT from new coordinator.")
+            self._enter_state('ABORT')
+        elif msg == GLOBAL_COMMIT:
+            self.logger.info(f"{self.participant} Received GLOBAL_COMMIT from new coordinator.")
+            self._enter_state('COMMIT')
 
     def run(self):
         # Wait for start of joint commit
