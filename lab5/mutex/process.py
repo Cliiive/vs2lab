@@ -3,6 +3,7 @@ import random
 import time
 
 from constMutex import ENTER, RELEASE, ALLOW, ACTIVE
+from constMutex import HEARTBEAT
 
 
 class Process:
@@ -45,6 +46,12 @@ class Process:
         self.clock = 0  # The current logical clock
         self.peer_name = 'unassigned'  # The original peer name
         self.peer_type = 'unassigned'  # A flag indicating behavior pattern
+        #######
+        # track last seen time for peers to detect crashes
+        self.last_seen = {}  # map: peer_id -> timestamp
+        # how long (seconds) to wait until a peer is considered crashed
+        self.peer_timeout = 5
+        #######
         self.logger = logging.getLogger("vs2lab.lab5.mutex.process.Process")
 
     def __mapid(self, id='-1'):
@@ -96,6 +103,46 @@ class Process:
             processes_with_later_message)
         return first_in_queue and all_have_answered
 
+    def __send_heartbeat(self):
+        """Send periodic heartbeat to all peers (used for crash detection)."""
+        self.clock = self.clock + 1
+        msg = (self.clock, self.process_id, HEARTBEAT)
+        try:
+            self.channel.send_to(self.other_processes, msg)
+        except AssertionError:
+            # if a receiver is unknown the channel may raise; ignore here
+            pass
+
+    #######
+
+    def __check_peer_timeouts(self):
+        """Remove peers that did not send heartbeats recently."""
+        now = time.time()
+        removed = []
+        for pid, ts in list(self.last_seen.items()):
+            if pid == self.process_id:
+                continue
+            if now - ts > self.peer_timeout:
+                # mark as removed
+                removed.append(pid)
+
+        if removed:
+            for pid in removed:
+                # remove from groups and queues
+                if pid in self.all_processes:
+                    self.all_processes.remove(pid)
+                if pid in self.other_processes:
+                    try:
+                        self.other_processes.remove(pid)
+                    except ValueError:
+                        pass
+                # purge any pending messages from removed peer
+                self.queue = [r for r in self.queue if r[1] != pid]
+                if pid in self.last_seen:
+                    del self.last_seen[pid]
+                self.logger.warning("Detected crashed peer {}. Removed from peer lists.".format(self.__mapid(pid)))
+    #######
+
     def __receive(self):
         # Pick up any message
         _receive = self.channel.receive_from(self.other_processes, 3)
@@ -105,16 +152,33 @@ class Process:
             self.clock = max(self.clock, msg[0])  # Adjust clock value...
             self.clock = self.clock + 1  # ...and increment
 
+            # map message type to human readable label (include HEARTBEAT)
+            msg_type = None
+            if msg[2] == ENTER:
+                msg_type = 'ENTER'
+            elif msg[2] == ALLOW:
+                msg_type = 'ALLOW'
+            elif msg[2] == RELEASE:
+                msg_type = 'RELEASE'
+            elif msg[2] == HEARTBEAT:
+                msg_type = 'HEARTBEAT'
+            else:
+                msg_type = str(msg[2])
+
             self.logger.debug("{} received {} from {}.".format(
-                self.__mapid(),
-                "ENTER" if msg[2] == ENTER
-                else "ALLOW" if msg[2] == ALLOW
-                else "RELEASE", self.__mapid(msg[1])))
+                self.__mapid(), msg_type, self.__mapid(msg[1])))
 
             if msg[2] == ENTER:
                 self.queue.append(msg)  # Append an ENTER request
                 # and unconditionally allow (don't want to access CS oneself)
                 self.__allow_to_enter(msg[1])
+            #######
+            elif msg[2] == HEARTBEAT:
+                # update last seen time for heartbeat messages
+                # (used for crash detection)
+                self.last_seen[msg[1]] = time.time()
+                # no queue entry required for heartbeat
+            #######
             elif msg[2] == ALLOW:
                 self.queue.append(msg)  # Append an ALLOW
             elif msg[2] == RELEASE:
@@ -141,6 +205,11 @@ class Process:
         self.other_processes = list(self.channel.subgroup('proc'))
         self.other_processes.remove(self.process_id)
 
+        # initialize last_seen timestamps for all known peers
+        now = time.time()
+        for pid in self.all_processes:
+            self.last_seen[pid] = now
+
         self.peer_name = peer_name  # assign peer name
         self.peer_type = peer_type  # assign peer behavior
 
@@ -148,6 +217,10 @@ class Process:
             peer_name, self.__mapid()))
 
     def run(self):
+        #######
+        # track last time we sent a heartbeat
+        last_hb = 0
+
         while True:
             # Enter the critical section if
             # 1) there are more than one process left and
@@ -162,6 +235,10 @@ class Process:
                 self.__request_to_enter()
                 while not self.__allowed_to_enter():
                     self.__receive()
+                    # periodically send heartbeats while waiting
+                    if time.time() - last_hb > 1:
+                        self.__send_heartbeat()
+                        last_hb = time.time()
 
                 # Stay in CS for some time ...
                 sleep_time = random.randint(0, 2000)
@@ -175,6 +252,15 @@ class Process:
                 self.__release()
                 continue
 
-            # Occasionally serve requests to enter (
+            # Occasionally serve requests to enter and send heartbeat
             if random.choice([True, False]):
                 self.__receive()
+
+            # send periodic heartbeat to signal aliveness
+            if time.time() - last_hb > 1:
+                self.__send_heartbeat()
+                last_hb = time.time()
+
+            # check for peers that timed out and remove them
+            self.__check_peer_timeouts()
+        #######
