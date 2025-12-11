@@ -10,6 +10,7 @@ Chord Application
 import logging
 import sys
 import multiprocessing as mp
+import random
 
 import chordnode as chord_node
 import constChord
@@ -19,20 +20,55 @@ lab_logging.setup(stream_level=logging.INFO)
 
 
 class DummyChordClient:
-    """A dummy client template with the channel boilerplate"""
+    """A chord client that performs recursive name resolution"""
 
     def __init__(self, channel):
         self.channel = channel
         self.node_id = channel.join('client')
+        self.logger = logging.getLogger("vs2lab.lab4.doit.DummyChordClient")
 
     def enter(self):
         self.channel.bind(self.node_id)
 
     def run(self):
-        print("Implement me pls...")
-        self.channel.send_to(  # a final multicast
-            {i.decode() for i in list(self.channel.channel.smembers('node'))},
-            constChord.STOP)
+        # Get all nodes from the ring
+        nodes = {i.decode() for i in list(self.channel.channel.smembers('node'))}
+        
+        if not nodes:
+            print("[CLIENT] No nodes available in the ring")
+            return
+        
+        nodes_list = sorted([int(n) for n in nodes])
+        
+        # Perform multiple lookups to demonstrate recursive resolution
+        for lookup_count in range(5):
+            # Pick a random key in the valid range
+            key = random.randint(0, self.channel.MAXPROC - 1)
+            
+            # Pick a random node to start the lookup
+            start_node = random.choice(nodes_list)
+            
+            self.logger.info(f"[CLIENT] LOOKUP {key:04n} starting from node {start_node:04n}")
+            print(f"[CLIENT] LOOKUP {key:04n} starting from node {start_node:04n}")
+            
+            # Send LOOKUP request to starting node
+            self.channel.send_to([str(start_node)], (constChord.LOOKUP_REQ, key))
+            
+            # Wait for the result
+            message = self.channel.receive_from_any()
+            sender = int(message[0])
+            response = message[1]
+            
+            if response[0] == constChord.LOOKUP_REP:
+                responsible_node = response[1]
+                self.logger.info(f"[CLIENT] Key {key:04n} is handled by node {responsible_node:04n}")
+                print(f"[CLIENT] Key {key:04n} is handled by node {responsible_node:04n}")
+            else:
+                print(f"[CLIENT] Unexpected response: {response}")
+        
+        # Send STOP signal to all nodes
+        self.logger.info("[CLIENT] Sending STOP signal to all nodes")
+        self.channel.send_to(nodes, constChord.STOP)
 
 
 def create_and_run(num_bits, node_class, enter_bar, run_bar):

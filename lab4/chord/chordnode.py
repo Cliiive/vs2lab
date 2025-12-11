@@ -147,12 +147,27 @@ class ChordNode:
                 break
 
             if request[0] == constChord.LOOKUP_REQ:  # A lookup request
+                key = int(request[1])
+                # Extract original sender (for recursive forwarding, request[2] is the original sender)
+                original_sender = str(request[2]) if len(request) > 2 else sender
+                
                 self.logger.info("Node {:04n} received LOOKUP {:04n} from {:04n}."
-                                 .format(self.node_id, int(request[1]), int(sender)))
+                                 .format(self.node_id, key, int(sender)))
 
-                # look up and return local successor 
-                next_id: int = self.local_successor_node(request[1])
-                self.channel.send_to([sender], (constChord.LOOKUP_REP, next_id))
+                # Recursive LOOKUP: Find the next hop locally
+                next_id: int = self.local_successor_node(key)
+                
+                if next_id == self.node_id:
+                    # This node is responsible for the key, send result directly to original sender
+                    self.logger.info("Node {:04n} is responsible for key {:04n}, replying to {:04n}."
+                                     .format(self.node_id, key, int(original_sender)))
+                    self.channel.send_to([original_sender], (constChord.LOOKUP_REP, self.node_id))
+                else:
+                    # Recursively forward to the next hop, preserving original sender info
+                    self.logger.info("Node {:04n} forwarding LOOKUP {:04n} to {:04n}."
+                                     .format(self.node_id, key, next_id))
+                    # Send recursive lookup request to next hop with original sender
+                    self.channel.send_to([str(next_id)], (constChord.LOOKUP_REQ, key, original_sender))
 
                 # Finally do a sanity check
                 if not self.channel.exists(next_id):  # probe for existence
