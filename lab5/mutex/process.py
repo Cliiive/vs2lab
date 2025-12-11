@@ -49,13 +49,13 @@ class Process:
         #######
         # track last seen time for peers to detect crashes
         self.last_seen = {}  # map: peer_id -> timestamp
+        self.last_heartbeat_sent = 0
+        self.heartbeat_interval = 1.0
         # track the current working process
         self.working_proc = {}
-        # track supossedly dead processes
-        self.supposedly_dead = {}
         # how long (seconds) to wait until a peer is considered crashed
-        self.peer_timeout = 5
-        self.work_timeout = 30
+        self.peer_timeout = 6
+        self.work_timeout = 10
         #######
         self.logger = logging.getLogger("vs2lab.lab5.mutex.process.Process")
 
@@ -113,41 +113,51 @@ class Process:
 
     def __send_heartbeat(self):
         """Send periodic heartbeat to all peers (used for crash detection)."""
+        now = time.time()
         self.clock = self.clock + 1
         msg = (self.clock, self.process_id, HEARTBEAT)
         try:
             self.channel.send_to(self.other_processes, msg)
-        except AssertionError:
+            self.last_heartbeat_sent = now
+            # Update our own last_seen to prevent self-timeout
+            self.last_seen[self.process_id] = now
+        except Exception as e:
             # if a receiver is unknown the channel may raise; ignore here
-            pass
+            self.logger.debug("Heartbeat send error: {}".format(e))
 
     #######
 
     def __check_peer_timeouts(self):
         """Remove peers that did not send heartbeats recently."""
         now = time.time()
-        removed = []
+        removed = set()  
 
-        # Check for work timeout
+        # Check 1: Peers stuck in CS (work timeout)
         for pid, ts in list(self.working_proc.items()):
-            if now - ts > self.work_timeout:
-                self.logger.warning("Detected working timeout peer {}".format(self.__mapid(pid)))
-                self.working_proc.pop(pid)
-
-        # Check for peer timeout
-        for pid, ts in list(self.last_seen.items()):
             if pid == self.process_id:
                 continue
-            if now - ts > self.peer_timeout:
-                if pid in self.working_proc:
-                    continue
-                # mark as removed
-                else:
-                    removed.append(pid)
+            if now - ts > self.work_timeout:
+                self.logger.warning("{} detected peer {} stuck in CS for {:.1f}s".format(
+                    self.__mapid(), self.__mapid(pid), now - ts))
+                self.working_proc.pop(pid)
+                # Mark as crashed
+                removed.add(pid)
 
+        # Check 2: Peers without heartbeat (peer timeout)
+        for pid, ts in list(self.last_seen.items()):
+            time_since_seen = now - ts
+            
+            if time_since_seen > self.peer_timeout:
+                # If already marked as crashed due to work timeout, skip
+                if pid not in removed:
+                    self.logger.warning("{} detected peer {} timeout (no heartbeat for {:.1f}s)".format(
+                        self.__mapid(), self.__mapid(pid), time_since_seen))
+                    removed.add(pid)
+
+        # Remove all crashed peers
         if removed:
             for pid in removed:
-                # remove from groups and queues
+                # Remove from groups
                 if pid in self.all_processes:
                     self.all_processes.remove(pid)
                 if pid in self.other_processes:
@@ -155,11 +165,20 @@ class Process:
                         self.other_processes.remove(pid)
                     except ValueError:
                         pass
-                # purge any pending messages from removed peer
+                
+                # Purge messages from crashed peer
                 self.queue = [r for r in self.queue if r[1] != pid]
+                
+                # Clean up tracking dicts
                 if pid in self.last_seen:
                     del self.last_seen[pid]
-                self.logger.warning("Detected crashed peer {}. Removed from peer lists.".format(self.__mapid(pid)))
+                if pid in self.working_proc:
+                    del self.working_proc[pid]
+                
+                self.logger.warning("{} removed crashed peer {}. Active peers: {}".format(
+                    self.__mapid(), 
+                    self.__mapid(pid), 
+                    [self.__mapid(p) for p in self.all_processes]))
     #######
 
     def __receive(self):
@@ -233,10 +252,13 @@ class Process:
 
     def run(self):
         #######
-        # track last time we sent a heartbeat
-        last_hb = 0
-
         while True:
+            # Periodically maintain heartbeat and check timeouts
+            now = time.time()
+            if now - self.last_heartbeat_sent >= self.heartbeat_interval:
+                self.__send_heartbeat()
+                self.__check_peer_timeouts()
+
             # Enter the critical section if
             # 1) there are more than one process left and
             # 2) this peer has active behavior and
@@ -251,9 +273,9 @@ class Process:
                 while not self.__allowed_to_enter():
                     self.__receive()
                     # periodically send heartbeats while waiting
-                    if time.time() - last_hb > 1:
+                    now = time.time()
+                    if now - self.last_heartbeat_sent >= self.heartbeat_interval:
                         self.__send_heartbeat()
-                        last_hb = time.time()
                         self.__check_peer_timeouts()
 
                 # Stay in CS for some time ...
@@ -277,12 +299,4 @@ class Process:
             # Occasionally serve requests to enter and send heartbeat
             if random.choice([True, False]):
                 self.__receive()
-
-            # send periodic heartbeat to signal aliveness
-            if time.time() - last_hb > 1:
-                self.__send_heartbeat()
-                last_hb = time.time()
-
-            # check for peers that timed out and remove them
-            self.__check_peer_timeouts()
         #######
