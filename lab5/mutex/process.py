@@ -49,8 +49,10 @@ class Process:
         #######
         # track last seen time for peers to detect crashes
         self.last_seen = {}  # map: peer_id -> timestamp
-
+        # track the current working process
         self.working_proc = {}
+        # track supossedly dead processes
+        self.supposedly_dead = {}
         # how long (seconds) to wait until a peer is considered crashed
         self.peer_timeout = 5
         self.work_timeout = 30
@@ -96,6 +98,9 @@ class Process:
         msg = (self.clock, self.process_id, RELEASE)
         # Multicast release notification
         self.channel.send_to(self.other_processes, msg)
+        # Clear working status
+        if self.process_id in self.working_proc:
+            self.working_proc.pop(self.process_id)
 
     def __allowed_to_enter(self):
         # See who has sent a message (the set will hold at most one element per sender)
@@ -123,11 +128,14 @@ class Process:
         now = time.time()
         removed = []
 
+        # Check for work timeout
+        for pid, ts in list(self.working_proc.items()):
+            if now - ts > self.work_timeout:
+                self.logger.warning("Detected working timeout peer {}".format(self.__mapid(pid)))
+                self.working_proc.pop(pid)
+
+        # Check for peer timeout
         for pid, ts in list(self.last_seen.items()):
-            for wpid, wts in list(self.working_proc.items()):
-                if now - wts > self.work_timeout:
-                    self.logger.warning("Detected working timeout peer {}".format(self.__mapid(pid)))
-                    self.working_proc.pop(wpid)
             if pid == self.process_id:
                 continue
             if now - ts > self.peer_timeout:
@@ -188,7 +196,8 @@ class Process:
                 # assure release requester indeed has access (his ENTER is first in queue)
                 assert self.queue[0][1] == msg[1] and self.queue[0][2] == ENTER, 'State error: inconsistent remote RELEASE'
                 del (self.queue[0])  # Just remove first message
-                self.working_proc.pop(msg[1])
+                if msg[1] in self.working_proc:
+                    self.working_proc.pop(msg[1])
             elif msg[2] == WORKING:
                 self.working_proc[msg[1]] = time.time()
 
@@ -254,6 +263,7 @@ class Process:
                 print(" CS <- {}".format(self.__mapid()))
                 ###
                 self.clock = self.clock + 1  # Increment clock value
+                self.working_proc[self.process_id] = time.time() # Track own working status
                 msg = (self.clock, self.process_id, WORKING)
                 self.channel.send_to(self.other_processes, msg)
                 ###
