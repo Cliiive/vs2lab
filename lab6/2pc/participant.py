@@ -110,7 +110,9 @@ class Participant:
     def run(self):
         # Wait for start of joint commit
         msg = self.channel.receive_from(self.coordinator, TIMEOUT)
-
+        if random.random() > 2/3:  # simulate a crash
+            return "Participant {} crashed in state INIT.".format(self.participant)
+        
         if not msg:  # Crashed coordinator - give up entirely
             # decide to locally abort (before doing anything)
             global decision

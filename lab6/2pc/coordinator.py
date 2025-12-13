@@ -46,7 +46,7 @@ class Coordinator:
         yet_to_receive = list(self.participants)
         while len(yet_to_receive) > 0:
             # We wait for messages
-            msg = self.channel.receive_from(self.participants, TIMEOUT)
+            msg = self.channel.receive_from(self.participants, TIMEOUT - 1)
 
             if (not msg) or (msg[1] == VOTE_ABORT):
                 # CASE: Timeout or Vote Abort
@@ -78,15 +78,15 @@ class Coordinator:
         return None
 
     def run(self):
-        if random.random() > 3/4:  # simulate a crash
-            return "Coordinator crashed in state INIT."
+        # if random.random() > 3/4:  # simulate a crash
+        #     return "Coordinator crashed in state INIT."
 
         # Request local votes from all participants
         self._enter_state('WAIT')
         self.channel.send_to(self.participants, VOTE_REQUEST)
 
-        if random.random() > 2/3:  # simulate a crash
-            return "Coordinator crashed in state WAIT."
+        # if random.random() > 2/3:  # simulate a crash
+        #     return "Coordinator crashed in state WAIT."
 
         # Collect votes from all participants
         # If this returns a string, it means we aborted.
