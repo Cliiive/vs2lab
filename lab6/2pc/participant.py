@@ -141,6 +141,7 @@ class Participant:
                 # Notify coordinator about local commit vote
                 self.channel.send_to(self.coordinator, VOTE_COMMIT)
 
+                
                 # Wait for PREPARE_COMMIT or GLOBAL_ABORT
                 msg = self.channel.receive_from(self.coordinator, TIMEOUT)
 
@@ -155,6 +156,9 @@ class Participant:
                 else:
                     if msg[1] == PREPARE_COMMIT:
                         self._enter_state('PRECOMMIT')
+                        
+                        if random.random() > 2/3:  # simulate a crash
+                            return "Participant {} crashed in state PRECOMMIT.".format(self.participant)
                         
                         # Acknowledge PRECOMMIT to Coordinator
                         self.channel.send_to(self.coordinator, READY_COMMIT)
