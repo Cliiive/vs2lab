@@ -52,7 +52,7 @@ class Coordinator:
                 # CASE: Timeout or Vote Abort
                 if self.state == 'WAIT':
                     # Phase 1: If anyone fails/aborts, we must abort everyone.
-                    reason = "timeout" if not msg else "local_abort from " + msg[0]
+                    reason = "timeout from participant" if not msg else "local_abort from " + msg[0]
                     self._enter_state('ABORT')
                     self.channel.send_to(self.participants, GLOBAL_ABORT)
                     return "Coordinator {} terminated in state ABORT. Reason: {}."\
